@@ -1,0 +1,6 @@
+.env
+assistant.db
+*.db
+models/
+vosk-runtime/
+.gotmp/
