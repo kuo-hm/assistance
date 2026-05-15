@@ -14,6 +14,9 @@ import (
 type Config struct {
 	GeminiAPIKey          string        `json:"gemini_api_key"`
 	GeminiModel           string        `json:"gemini_model"`
+	LLMProvider           string        `json:"llm_provider"`
+	OpenAIAPIKey          string        `json:"openai_api_key"`
+	OpenAIModel           string        `json:"openai_model"`
 	GoogleCredentialsFile string        `json:"google_credentials_file"`
 	WakeProvider          string        `json:"wake_provider"`
 	WakePhrase            string        `json:"wake_phrase"`
@@ -41,6 +44,9 @@ type Config struct {
 type fileConfig struct {
 	GeminiAPIKey          string   `json:"gemini_api_key"`
 	GeminiModel           string   `json:"gemini_model"`
+	LLMProvider           string   `json:"llm_provider"`
+	OpenAIAPIKey          string   `json:"openai_api_key"`
+	OpenAIModel           string   `json:"openai_model"`
 	GoogleCredentialsFile string   `json:"google_credentials_file"`
 	WakeProvider          string   `json:"wake_provider"`
 	WakePhrase            string   `json:"wake_phrase"`
@@ -99,6 +105,8 @@ func Load() (Config, error) {
 func defaults() Config {
 	return Config{
 		GeminiModel:      "gemini-2.5-flash",
+		LLMProvider:      "gemini",
+		OpenAIModel:      "gpt-4.1-mini",
 		WakeProvider:     "console",
 		WakePhrase:       "hello there",
 		STTProvider:      "console",
@@ -138,6 +146,15 @@ func loadFile(path string, cfg *Config) error {
 	}
 	if fc.GeminiModel != "" {
 		cfg.GeminiModel = fc.GeminiModel
+	}
+	if fc.LLMProvider != "" {
+		cfg.LLMProvider = fc.LLMProvider
+	}
+	if fc.OpenAIAPIKey != "" {
+		cfg.OpenAIAPIKey = fc.OpenAIAPIKey
+	}
+	if fc.OpenAIModel != "" {
+		cfg.OpenAIModel = fc.OpenAIModel
 	}
 	if fc.GoogleCredentialsFile != "" {
 		cfg.GoogleCredentialsFile = fc.GoogleCredentialsFile
@@ -219,6 +236,9 @@ func loadFile(path string, cfg *Config) error {
 func applyEnv(cfg *Config) {
 	envString("GEMINI_API_KEY", &cfg.GeminiAPIKey)
 	envString("GEMINI_MODEL", &cfg.GeminiModel)
+	envString("ASSISTANT_LLM_PROVIDER", &cfg.LLMProvider)
+	envString("OPENAI_API_KEY", &cfg.OpenAIAPIKey)
+	envString("OPENAI_MODEL", &cfg.OpenAIModel)
 	envString("GOOGLE_APPLICATION_CREDENTIALS", &cfg.GoogleCredentialsFile)
 	envString("ASSISTANT_WAKE_PROVIDER", &cfg.WakeProvider)
 	envString("ASSISTANT_WAKE_PHRASE", &cfg.WakePhrase)

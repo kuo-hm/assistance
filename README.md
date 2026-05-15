@@ -16,7 +16,8 @@ Voice assistant prototype for Windows development and Raspberry Pi Zero 2 W depl
 Console-only development mode:
 
 ```powershell
-$env:GEMINI_API_KEY="your-key"
+$env:ASSISTANT_LLM_PROVIDER="openai"
+$env:OPENAI_API_KEY="your-key"
 go run ./cmd/assistant
 ```
 
@@ -33,6 +34,18 @@ Use local Windows speech while still printing replies:
 
 ```powershell
 $env:ASSISTANT_TTS_PROVIDER="windows"
+```
+
+Switch the LLM provider:
+
+```powershell
+$env:ASSISTANT_LLM_PROVIDER="openai"
+$env:OPENAI_API_KEY="your-openai-key"
+$env:OPENAI_MODEL="gpt-4.1-mini"
+
+$env:ASSISTANT_LLM_PROVIDER="gemini"
+$env:GEMINI_API_KEY="your-gemini-key"
+$env:GEMINI_MODEL="gemini-2.5-flash-lite"
 ```
 
 Or load the checked-in `.env` file in PowerShell:

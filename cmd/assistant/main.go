@@ -57,7 +57,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	assistant, err := llm.NewGeminiAssistant(cfg.GeminiAPIKey, cfg.GeminiModel)
+	assistant, err := buildAssistant(cfg)
 	if err != nil {
 		return err
 	}
@@ -83,6 +83,17 @@ func run() error {
 
 	fmt.Println("assistant ready; waiting for wake phrase")
 	return runner.Run(ctx)
+}
+
+func buildAssistant(cfg config.Config) (llm.Assistant, error) {
+	switch cfg.LLMProvider {
+	case "gemini":
+		return llm.NewGeminiAssistant(cfg.GeminiAPIKey, cfg.GeminiModel)
+	case "openai":
+		return llm.NewOpenAIAssistant(cfg.OpenAIAPIKey, cfg.OpenAIModel)
+	default:
+		return nil, fmt.Errorf("unsupported llm provider %q", cfg.LLMProvider)
+	}
 }
 
 func buildWakeDetector(cfg config.Config, consoleLines *consoleio.LineReader) (wakeword.Detector, error) {
