@@ -18,9 +18,16 @@ type Config struct {
 	OpenAIAPIKey          string        `json:"openai_api_key"`
 	OpenAIModel           string        `json:"openai_model"`
 	GoogleCredentialsFile string        `json:"google_credentials_file"`
+	Mode                  string        `json:"mode"`
 	WakeProvider          string        `json:"wake_provider"`
 	WakePhrase            string        `json:"wake_phrase"`
+	WakeAliases           []string      `json:"wake_aliases"`
 	WakeCommand           string        `json:"wake_command"`
+	WakeSTTProvider       string        `json:"wake_stt_provider"`
+	WakeRecordCommand     string        `json:"wake_record_command"`
+	WakeRecordSeconds     int           `json:"wake_record_seconds"`
+	WakeMinConfidence     float32       `json:"wake_min_confidence"`
+	WakeDebug             bool          `json:"wake_debug"`
 	STTProvider           string        `json:"stt_provider"`
 	TTSProvider           string        `json:"tts_provider"`
 	SQLitePath            string        `json:"sqlite_path"`
@@ -39,6 +46,14 @@ type Config struct {
 	PlayCommand           string        `json:"play_command"`
 	TTSLanguageCode       string        `json:"tts_language_code"`
 	TTSVoiceName          string        `json:"tts_voice_name"`
+	RealtimeProvider      string        `json:"realtime_provider"`
+	GeminiLiveModel       string        `json:"gemini_live_model"`
+	GeminiLiveVoice       string        `json:"gemini_live_voice"`
+	InputSampleRate       int           `json:"input_sample_rate"`
+	OutputSampleRate      int           `json:"output_sample_rate"`
+	RealtimeInputCommand  string        `json:"realtime_input_command"`
+	RealtimeOutputCommand string        `json:"realtime_output_command"`
+	RealtimeChunkBytes    int           `json:"realtime_chunk_bytes"`
 }
 
 type fileConfig struct {
@@ -48,9 +63,16 @@ type fileConfig struct {
 	OpenAIAPIKey          string   `json:"openai_api_key"`
 	OpenAIModel           string   `json:"openai_model"`
 	GoogleCredentialsFile string   `json:"google_credentials_file"`
+	Mode                  string   `json:"mode"`
 	WakeProvider          string   `json:"wake_provider"`
 	WakePhrase            string   `json:"wake_phrase"`
+	WakeAliases           []string `json:"wake_aliases"`
 	WakeCommand           string   `json:"wake_command"`
+	WakeSTTProvider       string   `json:"wake_stt_provider"`
+	WakeRecordCommand     string   `json:"wake_record_command"`
+	WakeRecordSeconds     int      `json:"wake_record_seconds"`
+	WakeMinConfidence     float32  `json:"wake_min_confidence"`
+	WakeDebug             *bool    `json:"wake_debug"`
 	STTProvider           string   `json:"stt_provider"`
 	TTSProvider           string   `json:"tts_provider"`
 	SQLitePath            string   `json:"sqlite_path"`
@@ -69,6 +91,14 @@ type fileConfig struct {
 	PlayCommand           string   `json:"play_command"`
 	TTSLanguageCode       string   `json:"tts_language_code"`
 	TTSVoiceName          string   `json:"tts_voice_name"`
+	RealtimeProvider      string   `json:"realtime_provider"`
+	GeminiLiveModel       string   `json:"gemini_live_model"`
+	GeminiLiveVoice       string   `json:"gemini_live_voice"`
+	InputSampleRate       int      `json:"input_sample_rate"`
+	OutputSampleRate      int      `json:"output_sample_rate"`
+	RealtimeInputCommand  string   `json:"realtime_input_command"`
+	RealtimeOutputCommand string   `json:"realtime_output_command"`
+	RealtimeChunkBytes    int      `json:"realtime_chunk_bytes"`
 }
 
 // Load reads defaults, an optional JSON config file, and environment overrides.
@@ -98,35 +128,60 @@ func Load() (Config, error) {
 	if cfg.MaxTurnsPerSession <= 0 {
 		return Config{}, errors.New("max turns per session must be positive")
 	}
+	if cfg.WakeRecordSeconds <= 0 {
+		return Config{}, errors.New("wake record seconds must be positive")
+	}
+	if cfg.WakeProvider == "voice" && cfg.WakeRecordCommand == "" && cfg.RecordCommand == "" {
+		return Config{}, errors.New("ASSISTANT_WAKE_RECORD_COMMAND or ASSISTANT_RECORD_COMMAND is required when ASSISTANT_WAKE_PROVIDER=voice")
+	}
+	if cfg.InputSampleRate <= 0 {
+		return Config{}, errors.New("input sample rate must be positive")
+	}
+	if cfg.OutputSampleRate <= 0 {
+		return Config{}, errors.New("output sample rate must be positive")
+	}
+	if cfg.RealtimeChunkBytes <= 0 {
+		return Config{}, errors.New("realtime chunk bytes must be positive")
+	}
 
 	return cfg, nil
 }
 
 func defaults() Config {
 	return Config{
-		GeminiModel:      "gemini-2.5-flash",
-		LLMProvider:      "gemini",
-		OpenAIModel:      "gpt-4.1-mini",
-		WakeProvider:     "console",
-		WakePhrase:       "hello there",
-		STTProvider:      "console",
-		TTSProvider:      "console",
-		SQLitePath:       "assistant.db",
-		RecordingEnabled: false,
-		Languages:        []string{"en-US", "fr-FR", "ar-MA"},
-		VoskSampleRate:   16000,
+		GeminiModel:       "gemini-2.5-flash",
+		LLMProvider:       "gemini",
+		OpenAIModel:       "gpt-4.1-mini",
+		Mode:              "turn",
+		WakeProvider:      "console",
+		WakePhrase:        "hello there",
+		WakeRecordSeconds: 2,
+		STTProvider:       "console",
+		TTSProvider:       "console",
+		SQLitePath:        "assistant.db",
+		RecordingEnabled:  false,
+		Languages:         []string{"en-US", "fr-FR", "ar-MA"},
+		VoskSampleRate:    16000,
 		HybridLocalLanguages: []string{
 			"en-US",
 			"fr-FR",
 		},
-		HybridCloudLanguages: []string{"ar-MA"},
-		HybridMinConfidence:  0.65,
-		SilenceTimeout:       3 * time.Second,
-		SessionIdleTimeout:   45 * time.Second,
-		MaxTurnsPerSession:   12,
-		RecordSeconds:        12,
-		TTSLanguageCode:      "ar-XA",
-		TTSVoiceName:         "",
+		HybridCloudLanguages:  []string{"ar-MA"},
+		HybridMinConfidence:   0.65,
+		SilenceTimeout:        3 * time.Second,
+		SessionIdleTimeout:    45 * time.Second,
+		MaxTurnsPerSession:    12,
+		RecordSeconds:         12,
+		TTSLanguageCode:       "ar-XA",
+		TTSVoiceName:          "",
+		RealtimeProvider:      "gemini",
+		GeminiLiveModel:       "gemini-2.5-flash-native-audio-preview-12-2025",
+		GeminiLiveVoice:       "Kore",
+		InputSampleRate:       16000,
+		OutputSampleRate:      24000,
+		RealtimeInputCommand:  "arecord -f S16_LE -r {sample_rate} -c 1 -t raw",
+		RealtimeOutputCommand: "aplay -f S16_LE -r {sample_rate} -c 1",
+		RealtimeChunkBytes:    3200,
 	}
 }
 
@@ -159,14 +214,35 @@ func loadFile(path string, cfg *Config) error {
 	if fc.GoogleCredentialsFile != "" {
 		cfg.GoogleCredentialsFile = fc.GoogleCredentialsFile
 	}
+	if fc.Mode != "" {
+		cfg.Mode = fc.Mode
+	}
 	if fc.WakeProvider != "" {
 		cfg.WakeProvider = fc.WakeProvider
 	}
 	if fc.WakePhrase != "" {
 		cfg.WakePhrase = fc.WakePhrase
 	}
+	if len(fc.WakeAliases) > 0 {
+		cfg.WakeAliases = fc.WakeAliases
+	}
 	if fc.WakeCommand != "" {
 		cfg.WakeCommand = fc.WakeCommand
+	}
+	if fc.WakeSTTProvider != "" {
+		cfg.WakeSTTProvider = fc.WakeSTTProvider
+	}
+	if fc.WakeRecordCommand != "" {
+		cfg.WakeRecordCommand = fc.WakeRecordCommand
+	}
+	if fc.WakeRecordSeconds > 0 {
+		cfg.WakeRecordSeconds = fc.WakeRecordSeconds
+	}
+	if fc.WakeMinConfidence > 0 {
+		cfg.WakeMinConfidence = fc.WakeMinConfidence
+	}
+	if fc.WakeDebug != nil {
+		cfg.WakeDebug = *fc.WakeDebug
 	}
 	if fc.STTProvider != "" {
 		cfg.STTProvider = fc.STTProvider
@@ -230,6 +306,30 @@ func loadFile(path string, cfg *Config) error {
 	if fc.TTSVoiceName != "" {
 		cfg.TTSVoiceName = fc.TTSVoiceName
 	}
+	if fc.RealtimeProvider != "" {
+		cfg.RealtimeProvider = fc.RealtimeProvider
+	}
+	if fc.GeminiLiveModel != "" {
+		cfg.GeminiLiveModel = fc.GeminiLiveModel
+	}
+	if fc.GeminiLiveVoice != "" {
+		cfg.GeminiLiveVoice = fc.GeminiLiveVoice
+	}
+	if fc.InputSampleRate > 0 {
+		cfg.InputSampleRate = fc.InputSampleRate
+	}
+	if fc.OutputSampleRate > 0 {
+		cfg.OutputSampleRate = fc.OutputSampleRate
+	}
+	if fc.RealtimeInputCommand != "" {
+		cfg.RealtimeInputCommand = fc.RealtimeInputCommand
+	}
+	if fc.RealtimeOutputCommand != "" {
+		cfg.RealtimeOutputCommand = fc.RealtimeOutputCommand
+	}
+	if fc.RealtimeChunkBytes > 0 {
+		cfg.RealtimeChunkBytes = fc.RealtimeChunkBytes
+	}
 	return nil
 }
 
@@ -240,9 +340,12 @@ func applyEnv(cfg *Config) {
 	envString("OPENAI_API_KEY", &cfg.OpenAIAPIKey)
 	envString("OPENAI_MODEL", &cfg.OpenAIModel)
 	envString("GOOGLE_APPLICATION_CREDENTIALS", &cfg.GoogleCredentialsFile)
+	envString("ASSISTANT_MODE", &cfg.Mode)
 	envString("ASSISTANT_WAKE_PROVIDER", &cfg.WakeProvider)
 	envString("ASSISTANT_WAKE_PHRASE", &cfg.WakePhrase)
 	envString("ASSISTANT_WAKE_COMMAND", &cfg.WakeCommand)
+	envString("ASSISTANT_WAKE_STT_PROVIDER", &cfg.WakeSTTProvider)
+	envString("ASSISTANT_WAKE_RECORD_COMMAND", &cfg.WakeRecordCommand)
 	envString("ASSISTANT_STT_PROVIDER", &cfg.STTProvider)
 	envString("ASSISTANT_TTS_PROVIDER", &cfg.TTSProvider)
 	envString("ASSISTANT_SQLITE_PATH", &cfg.SQLitePath)
@@ -251,14 +354,27 @@ func applyEnv(cfg *Config) {
 	envString("ASSISTANT_TTS_LANGUAGE_CODE", &cfg.TTSLanguageCode)
 	envString("ASSISTANT_TTS_VOICE_NAME", &cfg.TTSVoiceName)
 	envString("ASSISTANT_VOSK_MODEL_PATH", &cfg.VoskModelPath)
+	envString("ASSISTANT_REALTIME_PROVIDER", &cfg.RealtimeProvider)
+	envString("GEMINI_LIVE_MODEL", &cfg.GeminiLiveModel)
+	envString("GEMINI_LIVE_VOICE", &cfg.GeminiLiveVoice)
+	envString("ASSISTANT_REALTIME_INPUT_COMMAND", &cfg.RealtimeInputCommand)
+	envString("ASSISTANT_REALTIME_OUTPUT_COMMAND", &cfg.RealtimeOutputCommand)
 
 	if raw := os.Getenv("ASSISTANT_RECORDING_ENABLED"); raw != "" {
 		if value, err := strconv.ParseBool(raw); err == nil {
 			cfg.RecordingEnabled = value
 		}
 	}
+	if raw := os.Getenv("ASSISTANT_WAKE_DEBUG"); raw != "" {
+		if value, err := strconv.ParseBool(raw); err == nil {
+			cfg.WakeDebug = value
+		}
+	}
 	if raw := os.Getenv("ASSISTANT_LANGUAGES"); raw != "" {
 		cfg.Languages = splitCSV(raw)
+	}
+	if raw := os.Getenv("ASSISTANT_WAKE_ALIASES"); raw != "" {
+		cfg.WakeAliases = splitCSV(raw)
 	}
 	if raw := os.Getenv("ASSISTANT_HYBRID_LOCAL_LANGUAGES"); raw != "" {
 		cfg.HybridLocalLanguages = splitCSV(raw)
@@ -286,6 +402,26 @@ func applyEnv(cfg *Config) {
 			cfg.RecordSeconds = value
 		}
 	}
+	if raw := os.Getenv("ASSISTANT_WAKE_RECORD_SECONDS"); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			cfg.WakeRecordSeconds = value
+		}
+	}
+	if raw := os.Getenv("ASSISTANT_INPUT_SAMPLE_RATE"); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			cfg.InputSampleRate = value
+		}
+	}
+	if raw := os.Getenv("ASSISTANT_OUTPUT_SAMPLE_RATE"); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			cfg.OutputSampleRate = value
+		}
+	}
+	if raw := os.Getenv("ASSISTANT_REALTIME_CHUNK_BYTES"); raw != "" {
+		if value, err := strconv.Atoi(raw); err == nil {
+			cfg.RealtimeChunkBytes = value
+		}
+	}
 	if raw := os.Getenv("ASSISTANT_VOSK_SAMPLE_RATE"); raw != "" {
 		if value, err := strconv.ParseFloat(raw, 64); err == nil {
 			cfg.VoskSampleRate = value
@@ -294,6 +430,11 @@ func applyEnv(cfg *Config) {
 	if raw := os.Getenv("ASSISTANT_HYBRID_MIN_CONFIDENCE"); raw != "" {
 		if value, err := strconv.ParseFloat(raw, 32); err == nil {
 			cfg.HybridMinConfidence = float32(value)
+		}
+	}
+	if raw := os.Getenv("ASSISTANT_WAKE_MIN_CONFIDENCE"); raw != "" {
+		if value, err := strconv.ParseFloat(raw, 32); err == nil {
+			cfg.WakeMinConfidence = float32(value)
 		}
 	}
 }

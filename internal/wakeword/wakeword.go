@@ -5,18 +5,161 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
+	"assistance/internal/audio"
 	"assistance/internal/consoleio"
+	"assistance/internal/stt"
 )
 
 // WakeEvent is emitted when the assistant should start listening.
 type WakeEvent struct {
 	Phrase     string
 	DetectedAt time.Time
+}
+
+// VoiceConfig controls STT-backed phrase wake detection.
+type VoiceConfig struct {
+	Phrase        string
+	Aliases       []string
+	Languages     []string
+	RecordSeconds int
+	MinConfidence float32
+	PollDelay     time.Duration
+	Debug         bool
+}
+
+// VoiceDetector records short audio windows and wakes when STT hears the phrase.
+type VoiceDetector struct {
+	recorder    audio.Recorder
+	transcriber stt.Transcriber
+	config      VoiceConfig
+}
+
+// NewVoiceDetector creates an STT-backed wake detector.
+func NewVoiceDetector(recorder audio.Recorder, transcriber stt.Transcriber, config VoiceConfig) *VoiceDetector {
+	if config.RecordSeconds <= 0 {
+		config.RecordSeconds = 2
+	}
+	if config.PollDelay <= 0 {
+		config.PollDelay = 250 * time.Millisecond
+	}
+	return &VoiceDetector{recorder: recorder, transcriber: transcriber, config: config}
+}
+
+// Listen emits a wake event when a recorded clip contains the configured phrase.
+func (d *VoiceDetector) Listen(ctx context.Context) (<-chan WakeEvent, error) {
+	if d.recorder == nil {
+		return nil, fmt.Errorf("voice wake recorder is required")
+	}
+	if d.transcriber == nil {
+		return nil, fmt.Errorf("voice wake transcriber is required")
+	}
+	if strings.TrimSpace(d.config.Phrase) == "" {
+		return nil, fmt.Errorf("voice wake phrase is required")
+	}
+
+	events := make(chan WakeEvent)
+	go func() {
+		defer close(events)
+		targets := normalizePhrases(d.config.Phrase, d.config.Aliases)
+		if d.config.Debug {
+			fmt.Printf("wake match phrases: %q\n", targets)
+		}
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+
+			clip, err := d.recorder.RecordUntilSilence(ctx, audio.RecordOptions{})
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				slog.Warn("voice wake recording failed", "error", err)
+				sleepOrDone(ctx, d.config.PollDelay)
+				continue
+			}
+			transcript, err := d.transcriber.Transcribe(ctx, clip, d.config.Languages)
+			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
+				slog.Debug("voice wake transcription skipped", "error", err)
+				if d.config.Debug {
+					fmt.Printf("wake heard: <no transcript> error=%v\n", err)
+				}
+				sleepOrDone(ctx, d.config.PollDelay)
+				continue
+			}
+			if d.config.Debug {
+				fmt.Printf("wake heard: %q confidence=%.2f language=%q\n", transcript.Text, transcript.Confidence, transcript.Language)
+			}
+			if d.config.MinConfidence > 0 && transcript.Confidence > 0 && transcript.Confidence < d.config.MinConfidence {
+				slog.Debug("voice wake transcript below confidence", "text", transcript.Text, "confidence", transcript.Confidence)
+				continue
+			}
+			heard := normalizePhrase(transcript.Text)
+			if matchesAnyPhrase(heard, targets) {
+				slog.Info("voice wake phrase detected", "text", transcript.Text)
+				select {
+				case events <- WakeEvent{Phrase: d.config.Phrase, DetectedAt: time.Now()}:
+				case <-ctx.Done():
+					return
+				}
+			} else if heard != "" {
+				slog.Debug("voice wake phrase not matched", "text", transcript.Text)
+			}
+		}
+	}()
+	return events, nil
+}
+
+var nonWord = regexp.MustCompile(`[^a-z0-9]+`)
+
+func normalizePhrase(text string) string {
+	text = strings.ToLower(strings.TrimSpace(text))
+	text = nonWord.ReplaceAllString(text, " ")
+	return strings.Join(strings.Fields(text), " ")
+}
+
+func normalizePhrases(phrase string, aliases []string) []string {
+	values := make([]string, 0, len(aliases)+1)
+	for _, value := range append([]string{phrase}, aliases...) {
+		normalized := normalizePhrase(value)
+		if normalized != "" {
+			values = append(values, normalized)
+		}
+	}
+	return values
+}
+
+func matchesAnyPhrase(heard string, targets []string) bool {
+	if heard == "" {
+		return false
+	}
+	for _, target := range targets {
+		if heard == target || strings.Contains(heard, target) {
+			return true
+		}
+	}
+	return false
+}
+
+func sleepOrDone(ctx context.Context, duration time.Duration) {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+	}
 }
 
 // Detector listens for a wake phrase.

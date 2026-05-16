@@ -15,6 +15,7 @@ import (
 	"assistance/internal/conversation"
 	"assistance/internal/llm"
 	"assistance/internal/memory"
+	"assistance/internal/realtime"
 	"assistance/internal/stt"
 	"assistance/internal/tts"
 	"assistance/internal/wakeword"
@@ -47,6 +48,9 @@ func run() error {
 	}()
 
 	consoleLines := consoleio.NewLineReader(os.Stdin)
+	if cfg.Mode == "realtime" {
+		return runRealtime(ctx, cfg, store, consoleLines)
+	}
 
 	detector, err := buildWakeDetector(cfg, consoleLines)
 	if err != nil {
@@ -81,7 +85,39 @@ func run() error {
 		},
 	})
 
-	fmt.Println("assistant ready; waiting for wake phrase")
+	fmt.Printf("assistant ready; waiting for wake phrase %q with %s wake provider\n", cfg.WakePhrase, cfg.WakeProvider)
+	return runner.Run(ctx)
+}
+
+func runRealtime(ctx context.Context, cfg config.Config, store *memory.Store, consoleLines *consoleio.LineReader) error {
+	detector, err := buildWakeDetector(cfg, consoleLines)
+	if err != nil {
+		return err
+	}
+	if cfg.RealtimeProvider != "gemini" {
+		return fmt.Errorf("unsupported realtime provider %q", cfg.RealtimeProvider)
+	}
+
+	factory := func() (realtime.Session, error) {
+		return realtime.NewGeminiSession(realtime.GeminiConfig{
+			APIKey:      cfg.GeminiAPIKey,
+			Model:       cfg.GeminiLiveModel,
+			Voice:       cfg.GeminiLiveVoice,
+			Languages:   cfg.Languages,
+			Temperature: 0.6,
+		})
+	}
+	runner := realtime.NewRunner(detector, store, factory, realtime.RunnerConfig{
+		InputCommand:  cfg.RealtimeInputCommand,
+		OutputCommand: cfg.RealtimeOutputCommand,
+		InputRate:     cfg.InputSampleRate,
+		OutputRate:    cfg.OutputSampleRate,
+		ChunkBytes:    cfg.RealtimeChunkBytes,
+		Languages:     cfg.Languages,
+	})
+	// print the wake command we have from the .env
+
+	fmt.Printf("assistant realtime ready; say %q to start streaming session with %s wake provider (press Ctrl+C to exit)\n", cfg.WakePhrase, cfg.WakeProvider)
 	return runner.Run(ctx)
 }
 
@@ -102,8 +138,57 @@ func buildWakeDetector(cfg config.Config, consoleLines *consoleio.LineReader) (w
 		return wakeword.NewConsoleDetectorWithReader(consoleLines, os.Stdout, cfg.WakePhrase), nil
 	case "command":
 		return wakeword.NewCommandDetector(cfg.WakeCommand, cfg.WakePhrase), nil
+	case "voice":
+		transcriber, err := buildWakeTranscriber(cfg)
+		if err != nil {
+			return nil, err
+		}
+		recordCommand := cfg.WakeRecordCommand
+		if recordCommand == "" {
+			recordCommand = cfg.RecordCommand
+		}
+		recorder := audio.NewExternalRecorder(recordCommand, cfg.WakeRecordSeconds)
+		return wakeword.NewVoiceDetector(recorder, transcriber, wakeword.VoiceConfig{
+			Phrase:        cfg.WakePhrase,
+			Aliases:       cfg.WakeAliases,
+			Languages:     cfg.Languages,
+			RecordSeconds: cfg.WakeRecordSeconds,
+			MinConfidence: cfg.WakeMinConfidence,
+			Debug:         cfg.WakeDebug,
+		}), nil
 	default:
 		return nil, fmt.Errorf("unsupported wake provider %q", cfg.WakeProvider)
+	}
+}
+
+func buildWakeTranscriber(cfg config.Config) (stt.Transcriber, error) {
+	provider := cfg.WakeSTTProvider
+	if provider == "" {
+		provider = cfg.STTProvider
+	}
+	switch provider {
+	case "google":
+		return stt.NewGoogleTranscriber(context.Background(), cfg.GoogleCredentialsFile)
+	case "vosk":
+		return stt.NewVoskTranscriber(cfg.VoskModelPath, cfg.VoskSampleRate)
+	case "hybrid":
+		local, err := stt.NewVoskTranscriber(cfg.VoskModelPath, cfg.VoskSampleRate)
+		if err != nil {
+			return nil, err
+		}
+		cloud, err := stt.NewGoogleTranscriber(context.Background(), cfg.GoogleCredentialsFile)
+		if err != nil {
+			return nil, err
+		}
+		return stt.NewHybridTranscriber(
+			local,
+			cloud,
+			cfg.HybridLocalLanguages,
+			cfg.HybridCloudLanguages,
+			cfg.HybridMinConfidence,
+		), nil
+	default:
+		return nil, fmt.Errorf("unsupported voice wake stt provider %q", provider)
 	}
 }
 

@@ -22,6 +22,12 @@ func TestLoadUsesDefaultsAndEnv(t *testing.T) {
 	if cfg.WakePhrase != "hello there" {
 		t.Fatalf("WakePhrase = %q", cfg.WakePhrase)
 	}
+	if cfg.Mode != "turn" {
+		t.Fatalf("Mode = %q", cfg.Mode)
+	}
+	if cfg.RealtimeProvider != "gemini" {
+		t.Fatalf("RealtimeProvider = %q", cfg.RealtimeProvider)
+	}
 	if len(cfg.Languages) != 3 {
 		t.Fatalf("Languages length = %d", len(cfg.Languages))
 	}
@@ -70,9 +76,16 @@ func clearAssistantEnv(t *testing.T) {
 		"OPENAI_MODEL",
 		"GOOGLE_APPLICATION_CREDENTIALS",
 		"ASSISTANT_CONFIG",
+		"ASSISTANT_MODE",
 		"ASSISTANT_WAKE_PROVIDER",
 		"ASSISTANT_WAKE_PHRASE",
+		"ASSISTANT_WAKE_ALIASES",
 		"ASSISTANT_WAKE_COMMAND",
+		"ASSISTANT_WAKE_STT_PROVIDER",
+		"ASSISTANT_WAKE_RECORD_COMMAND",
+		"ASSISTANT_WAKE_RECORD_SECONDS",
+		"ASSISTANT_WAKE_MIN_CONFIDENCE",
+		"ASSISTANT_WAKE_DEBUG",
 		"ASSISTANT_STT_PROVIDER",
 		"ASSISTANT_TTS_PROVIDER",
 		"ASSISTANT_SQLITE_PATH",
@@ -91,6 +104,14 @@ func clearAssistantEnv(t *testing.T) {
 		"ASSISTANT_PLAY_COMMAND",
 		"ASSISTANT_TTS_LANGUAGE_CODE",
 		"ASSISTANT_TTS_VOICE_NAME",
+		"ASSISTANT_REALTIME_PROVIDER",
+		"GEMINI_LIVE_MODEL",
+		"GEMINI_LIVE_VOICE",
+		"ASSISTANT_INPUT_SAMPLE_RATE",
+		"ASSISTANT_OUTPUT_SAMPLE_RATE",
+		"ASSISTANT_REALTIME_CHUNK_BYTES",
+		"ASSISTANT_REALTIME_INPUT_COMMAND",
+		"ASSISTANT_REALTIME_OUTPUT_COMMAND",
 	}
 	for _, name := range names {
 		t.Setenv(name, "")
