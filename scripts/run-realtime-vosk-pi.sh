@@ -38,9 +38,43 @@ export ASSISTANT_VOSK_MODEL_PATH="${ASSISTANT_VOSK_MODEL_PATH:-models/vosk-model
 export ASSISTANT_VOSK_SAMPLE_RATE="${ASSISTANT_VOSK_SAMPLE_RATE:-16000}"
 
 VOSK_RUNTIME="${VOSK_RUNTIME:-$ROOT/vosk-runtime/vosk-linux-aarch64-0.3.45}"
-export CGO_CPPFLAGS="${CGO_CPPFLAGS:--I$VOSK_RUNTIME}"
-export CGO_LDFLAGS="${CGO_LDFLAGS:--L$VOSK_RUNTIME -lvosk}"
-export LD_LIBRARY_PATH="$VOSK_RUNTIME:${LD_LIBRARY_PATH:-}"
+VOSK_LIB_DIR="${VOSK_LIB_DIR:-}"
+VOSK_INCLUDE_DIR="${VOSK_INCLUDE_DIR:-}"
+
+if [[ -z "$VOSK_LIB_DIR" ]]; then
+  if [[ -f "$VOSK_RUNTIME/libvosk.so" ]]; then
+    VOSK_LIB_DIR="$VOSK_RUNTIME"
+  else
+    VOSK_LIB_DIR="$(find "$ROOT/vosk-runtime" -name libvosk.so -type f -printf '%h\n' 2>/dev/null | head -n 1 || true)"
+  fi
+fi
+
+if [[ -z "$VOSK_INCLUDE_DIR" ]]; then
+  if [[ -f "$VOSK_RUNTIME/vosk_api.h" ]]; then
+    VOSK_INCLUDE_DIR="$VOSK_RUNTIME"
+  elif [[ -f "$ROOT/vosk-api-0.3.50/src/vosk_api.h" ]]; then
+    VOSK_INCLUDE_DIR="$ROOT/vosk-api-0.3.50/src"
+  else
+    VOSK_INCLUDE_DIR="$(find "$ROOT" -name vosk_api.h -type f -printf '%h\n' 2>/dev/null | head -n 1 || true)"
+  fi
+fi
+
+if [[ -z "$VOSK_LIB_DIR" || ! -f "$VOSK_LIB_DIR/libvosk.so" ]]; then
+  echo "libvosk.so not found under $ROOT/vosk-runtime" >&2
+  echo "Run ./scripts/setup-pi.sh first." >&2
+  exit 1
+fi
+
+if [[ -z "$VOSK_INCLUDE_DIR" || ! -f "$VOSK_INCLUDE_DIR/vosk_api.h" ]]; then
+  echo "vosk_api.h not found under $ROOT" >&2
+  echo "Run ./scripts/setup-pi.sh first, or set VOSK_INCLUDE_DIR manually." >&2
+  exit 1
+fi
+
+# Ignore Windows CGO flags from .env on Linux and use detected Pi paths.
+export CGO_CPPFLAGS="-I$VOSK_INCLUDE_DIR"
+export CGO_LDFLAGS="-L$VOSK_LIB_DIR -lvosk"
+export LD_LIBRARY_PATH="$VOSK_LIB_DIR:${LD_LIBRARY_PATH:-}"
 
 if [[ -z "${GEMINI_API_KEY:-}" ]]; then
   echo "GEMINI_API_KEY is required. Put it in .env or export it before running." >&2
@@ -63,12 +97,8 @@ if [[ ! -d "$ASSISTANT_VOSK_MODEL_PATH" ]]; then
   exit 1
 fi
 
-if [[ ! -f "$VOSK_RUNTIME/libvosk.so" || ! -f "$VOSK_RUNTIME/vosk_api.h" ]]; then
-  echo "Vosk runtime not found at: $VOSK_RUNTIME" >&2
-  echo "Run ./scripts/setup-pi.sh first." >&2
-  exit 1
-fi
-
 mkdir -p .gotmp
+echo "Using Vosk include: $VOSK_INCLUDE_DIR"
+echo "Using Vosk library: $VOSK_LIB_DIR"
 go build -tags vosk -o .gotmp/assistant-vosk-pi ./cmd/assistant
 exec .gotmp/assistant-vosk-pi
