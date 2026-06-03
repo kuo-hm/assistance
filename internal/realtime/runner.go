@@ -48,15 +48,27 @@ func NewRunner(wake wakeword.Detector, memory MemoryStore, factory SessionFactor
 
 // Run waits for wake events and starts realtime sessions.
 func (r *Runner) Run(ctx context.Context) error {
-	events, err := r.wake.Listen(ctx)
-	if err != nil {
-		return err
-	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		default:
+		}
+
+		wakeCtx, wakeCancel := context.WithCancel(ctx)
+		events, err := r.wake.Listen(wakeCtx)
+		if err != nil {
+			wakeCancel()
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			wakeCancel()
+			return ctx.Err()
 		case event, ok := <-events:
+			// Cancel wake detection immediately so it releases the microphone device lock
+			wakeCancel()
 			if !ok {
 				return nil
 			}

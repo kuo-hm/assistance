@@ -53,15 +53,27 @@ func (r *Runner) Run(ctx context.Context) error {
 	if err := r.validate(); err != nil {
 		return err
 	}
-	events, err := r.deps.WakeWordDetector.Listen(ctx)
-	if err != nil {
-		return err
-	}
 	for {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		default:
+		}
+
+		wakeCtx, wakeCancel := context.WithCancel(ctx)
+		events, err := r.deps.WakeWordDetector.Listen(wakeCtx)
+		if err != nil {
+			wakeCancel()
+			return err
+		}
+
+		select {
+		case <-ctx.Done():
+			wakeCancel()
+			return ctx.Err()
 		case event, ok := <-events:
+			// Cancel wake detection immediately to free the audio interface
+			wakeCancel()
 			if !ok {
 				return nil
 			}
