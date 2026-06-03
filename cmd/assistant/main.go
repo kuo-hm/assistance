@@ -246,6 +246,19 @@ func buildSpeaker(cfg config.Config) (tts.Speaker, error) {
 		return tts.NewMultiSpeaker(console, googleSpeaker), nil
 	case "windows":
 		return tts.NewMultiSpeaker(console, tts.NewWindowsSpeaker()), nil
+	case "kokoro":
+		if cfg.PlayCommand == "" {
+			return nil, errors.New("ASSISTANT_PLAY_COMMAND is required when ASSISTANT_TTS_PROVIDER=kokoro")
+		}
+		kokoroSpeaker := tts.NewKokoroSpeaker(tts.KokoroSpeakerConfig{
+			PythonPath:  cfg.KokoroPython,
+			ScriptPath:  cfg.KokoroScript,
+			ModelPath:   cfg.KokoroModel,
+			VoicesPath:  cfg.KokoroVoices,
+			VoiceName:   cfg.TTSVoiceName,
+			PlayCommand: cfg.PlayCommand,
+		})
+		return tts.NewMultiSpeaker(console, kokoroSpeaker), nil
 	default:
 		return nil, fmt.Errorf("unsupported tts provider %q", cfg.TTSProvider)
 	}

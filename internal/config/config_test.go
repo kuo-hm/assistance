@@ -31,6 +31,18 @@ func TestLoadUsesDefaultsAndEnv(t *testing.T) {
 	if len(cfg.Languages) != 3 {
 		t.Fatalf("Languages length = %d", len(cfg.Languages))
 	}
+	if cfg.KokoroPython != "python" {
+		t.Fatalf("KokoroPython = %q", cfg.KokoroPython)
+	}
+	if cfg.KokoroScript != "scripts/kokoro_tts.py" {
+		t.Fatalf("KokoroScript = %q", cfg.KokoroScript)
+	}
+	if cfg.KokoroModel != "models/kokoro-v1.0.onnx" {
+		t.Fatalf("KokoroModel = %q", cfg.KokoroModel)
+	}
+	if cfg.KokoroVoices != "models/voices-v1.0.bin" {
+		t.Fatalf("KokoroVoices = %q", cfg.KokoroVoices)
+	}
 }
 
 func TestLoadConfigFile(t *testing.T) {
@@ -63,6 +75,32 @@ func TestLoadConfigFile(t *testing.T) {
 	}
 	if cfg.Languages[0] != "fr-FR" {
 		t.Fatalf("Languages[0] = %q", cfg.Languages[0])
+	}
+}
+
+func TestLoadKokoroConfig(t *testing.T) {
+	clearAssistantEnv(t)
+	t.Setenv("GEMINI_API_KEY", "test-key")
+	t.Setenv("ASSISTANT_KOKORO_PYTHON", "python3")
+	t.Setenv("ASSISTANT_KOKORO_SCRIPT", "custom_kokoro.py")
+	t.Setenv("ASSISTANT_KOKORO_MODEL", "custom_model.onnx")
+	t.Setenv("ASSISTANT_KOKORO_VOICES", "custom_voices.bin")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.KokoroPython != "python3" {
+		t.Fatalf("KokoroPython = %q", cfg.KokoroPython)
+	}
+	if cfg.KokoroScript != "custom_kokoro.py" {
+		t.Fatalf("KokoroScript = %q", cfg.KokoroScript)
+	}
+	if cfg.KokoroModel != "custom_model.onnx" {
+		t.Fatalf("KokoroModel = %q", cfg.KokoroModel)
+	}
+	if cfg.KokoroVoices != "custom_voices.bin" {
+		t.Fatalf("KokoroVoices = %q", cfg.KokoroVoices)
 	}
 }
 
@@ -112,6 +150,10 @@ func clearAssistantEnv(t *testing.T) {
 		"ASSISTANT_REALTIME_CHUNK_BYTES",
 		"ASSISTANT_REALTIME_INPUT_COMMAND",
 		"ASSISTANT_REALTIME_OUTPUT_COMMAND",
+		"ASSISTANT_KOKORO_PYTHON",
+		"ASSISTANT_KOKORO_SCRIPT",
+		"ASSISTANT_KOKORO_MODEL",
+		"ASSISTANT_KOKORO_VOICES",
 	}
 	for _, name := range names {
 		t.Setenv(name, "")

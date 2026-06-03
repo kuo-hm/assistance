@@ -161,3 +161,95 @@ func (s *GoogleSpeaker) Speak(ctx context.Context, reply llm.AssistantReply) err
 	}
 	return nil
 }
+
+// KokoroSpeakerConfig configures Kokoro TTS playback.
+type KokoroSpeakerConfig struct {
+	PythonPath  string
+	ScriptPath  string
+	ModelPath   string
+	VoicesPath  string
+	VoiceName   string
+	PlayCommand string
+}
+
+// KokoroSpeaker synthesizes speech locally via Python & ONNX and plays it.
+type KokoroSpeaker struct {
+	pythonPath  string
+	scriptPath  string
+	modelPath   string
+	voicesPath  string
+	voiceName   string
+	playCommand string
+}
+
+// NewKokoroSpeaker creates a Kokoro Speaker.
+func NewKokoroSpeaker(cfg KokoroSpeakerConfig) *KokoroSpeaker {
+	if cfg.PythonPath == "" {
+		cfg.PythonPath = "python"
+	}
+	if cfg.ScriptPath == "" {
+		cfg.ScriptPath = "scripts/kokoro_tts.py"
+	}
+	if cfg.ModelPath == "" {
+		cfg.ModelPath = "models/kokoro-v1.0.onnx"
+	}
+	if cfg.VoicesPath == "" {
+		cfg.VoicesPath = "models/voices-v1.0.bin"
+	}
+	if cfg.VoiceName == "" {
+		cfg.VoiceName = "af_bella"
+	}
+	return &KokoroSpeaker{
+		pythonPath:  cfg.PythonPath,
+		scriptPath:  cfg.ScriptPath,
+		modelPath:   cfg.ModelPath,
+		voicesPath:  cfg.VoicesPath,
+		voiceName:   cfg.VoiceName,
+		playCommand: cfg.PlayCommand,
+	}
+}
+
+// Speak synthesizes text to speech using scripts/kokoro_tts.py and plays it.
+func (s *KokoroSpeaker) Speak(ctx context.Context, reply llm.AssistantReply) error {
+	// Create a temp file path for output WAV file
+	file, err := os.CreateTemp("", "assistant-reply-*.wav")
+	if err != nil {
+		return fmt.Errorf("create tts temp file: %w", err)
+	}
+	path := file.Name()
+	_ = file.Close()
+	// Defer cleanup of the temp file
+	defer os.Remove(path)
+
+	// Execute python script
+	args := []string{
+		s.scriptPath,
+		"--text", reply.Text,
+		"--output", path,
+		"--voice", s.voiceName,
+		"--model", s.modelPath,
+		"--voices", s.voicesPath,
+	}
+
+	cmd := exec.CommandContext(ctx, s.pythonPath, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("run kokoro-tts script: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+
+	// Play audio
+	command := strings.ReplaceAll(s.playCommand, "{input}", path)
+	var playCmd *exec.Cmd
+	if os.PathSeparator == '\\' {
+		playCmd = exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", command)
+	} else {
+		playCmd = exec.CommandContext(ctx, "sh", "-c", command)
+	}
+	output, err = playCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("play tts audio: %w: %s", err, strings.TrimSpace(string(output)))
+	}
+
+	return nil
+}
+

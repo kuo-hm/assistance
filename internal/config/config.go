@@ -54,6 +54,10 @@ type Config struct {
 	RealtimeInputCommand  string        `json:"realtime_input_command"`
 	RealtimeOutputCommand string        `json:"realtime_output_command"`
 	RealtimeChunkBytes    int           `json:"realtime_chunk_bytes"`
+	KokoroPython          string        `json:"kokoro_python"`
+	KokoroScript          string        `json:"kokoro_script"`
+	KokoroModel           string        `json:"kokoro_model"`
+	KokoroVoices          string        `json:"kokoro_voices"`
 }
 
 type fileConfig struct {
@@ -99,6 +103,10 @@ type fileConfig struct {
 	RealtimeInputCommand  string   `json:"realtime_input_command"`
 	RealtimeOutputCommand string   `json:"realtime_output_command"`
 	RealtimeChunkBytes    int      `json:"realtime_chunk_bytes"`
+	KokoroPython          string   `json:"kokoro_python"`
+	KokoroScript          string   `json:"kokoro_script"`
+	KokoroModel           string   `json:"kokoro_model"`
+	KokoroVoices          string   `json:"kokoro_voices"`
 }
 
 // Load reads defaults, an optional JSON config file, and environment overrides.
@@ -182,6 +190,10 @@ func defaults() Config {
 		RealtimeInputCommand:  "arecord -f S16_LE -r {sample_rate} -c 1 -t raw",
 		RealtimeOutputCommand: "aplay -f S16_LE -r {sample_rate} -c 1",
 		RealtimeChunkBytes:    3200,
+		KokoroPython:          "python",
+		KokoroScript:          "scripts/kokoro_tts.py",
+		KokoroModel:           "models/kokoro-v1.0.onnx",
+		KokoroVoices:          "models/voices-v1.0.bin",
 	}
 }
 
@@ -330,6 +342,18 @@ func loadFile(path string, cfg *Config) error {
 	if fc.RealtimeChunkBytes > 0 {
 		cfg.RealtimeChunkBytes = fc.RealtimeChunkBytes
 	}
+	if fc.KokoroPython != "" {
+		cfg.KokoroPython = fc.KokoroPython
+	}
+	if fc.KokoroScript != "" {
+		cfg.KokoroScript = fc.KokoroScript
+	}
+	if fc.KokoroModel != "" {
+		cfg.KokoroModel = fc.KokoroModel
+	}
+	if fc.KokoroVoices != "" {
+		cfg.KokoroVoices = fc.KokoroVoices
+	}
 	return nil
 }
 
@@ -359,6 +383,10 @@ func applyEnv(cfg *Config) {
 	envString("GEMINI_LIVE_VOICE", &cfg.GeminiLiveVoice)
 	envString("ASSISTANT_REALTIME_INPUT_COMMAND", &cfg.RealtimeInputCommand)
 	envString("ASSISTANT_REALTIME_OUTPUT_COMMAND", &cfg.RealtimeOutputCommand)
+	envString("ASSISTANT_KOKORO_PYTHON", &cfg.KokoroPython)
+	envString("ASSISTANT_KOKORO_SCRIPT", &cfg.KokoroScript)
+	envString("ASSISTANT_KOKORO_MODEL", &cfg.KokoroModel)
+	envString("ASSISTANT_KOKORO_VOICES", &cfg.KokoroVoices)
 
 	if raw := os.Getenv("ASSISTANT_RECORDING_ENABLED"); raw != "" {
 		if value, err := strconv.ParseBool(raw); err == nil {
