@@ -78,6 +78,7 @@ func (d *VoiceDetector) Listen(ctx context.Context) (<-chan WakeEvent, error) {
 			default:
 			}
 
+			fmt.Printf("Wake Word Detector: Listening for %q (or aliases %q)...\n", d.config.Phrase, d.config.Aliases)
 			clip, err := d.recorder.RecordUntilSilence(ctx, audio.RecordOptions{})
 			if err != nil {
 				if ctx.Err() != nil {
@@ -87,35 +88,34 @@ func (d *VoiceDetector) Listen(ctx context.Context) (<-chan WakeEvent, error) {
 				sleepOrDone(ctx, d.config.PollDelay)
 				continue
 			}
+
+			fmt.Println("Wake Word Detector: Analyzing captured audio...")
 			transcript, err := d.transcriber.Transcribe(ctx, clip, d.config.Languages)
 			if err != nil {
 				if ctx.Err() != nil {
 					return
 				}
 				slog.Debug("voice wake transcription skipped", "error", err)
-				if d.config.Debug {
-					fmt.Printf("wake heard: <no transcript> error=%v\n", err)
-				}
+				fmt.Printf("Wake Word Detector: Failed to recognize speech (error: %v)\n", err)
 				sleepOrDone(ctx, d.config.PollDelay)
 				continue
 			}
-			if d.config.Debug {
-				fmt.Printf("wake heard: %q confidence=%.2f language=%q\n", transcript.Text, transcript.Confidence, transcript.Language)
-			}
+
+			fmt.Printf("Wake Word Detector heard: %q (confidence: %.2f, language: %q)\n", transcript.Text, transcript.Confidence, transcript.Language)
 			if d.config.MinConfidence > 0 && transcript.Confidence > 0 && transcript.Confidence < d.config.MinConfidence {
-				slog.Debug("voice wake transcript below confidence", "text", transcript.Text, "confidence", transcript.Confidence)
+				fmt.Printf("Wake Word Detector: Ignored due to low confidence (below min: %.2f)\n", d.config.MinConfidence)
 				continue
 			}
 			heard := normalizePhrase(transcript.Text)
 			if matchesAnyPhrase(heard, targets) {
-				slog.Info("voice wake phrase detected", "text", transcript.Text)
+				fmt.Println("SUCCESS: Wake phrase matched!")
 				select {
 				case events <- WakeEvent{Phrase: d.config.Phrase, DetectedAt: time.Now()}:
 				case <-ctx.Done():
 					return
 				}
 			} else if heard != "" {
-				slog.Debug("voice wake phrase not matched", "text", transcript.Text)
+				fmt.Printf("Wake Word Detector: Heard %q but it did not match targets\n", heard)
 			}
 		}
 	}()
